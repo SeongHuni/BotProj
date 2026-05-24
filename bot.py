@@ -125,7 +125,7 @@ class RconError(RuntimeError):
 
 
 class RconClient:
-    def __init__(self, host: str, password: str, port: int, timeout: float = 10.0):
+    def __init__(self, host: str, password: str, port: int, timeout: float = 30.0):
         self.host = host
         self.password = password
         self.port = port
@@ -163,7 +163,10 @@ class RconClient:
             raise RconError("RCON socket is not connected")
         data = bytearray()
         while len(data) < size:
-            chunk = self._socket.recv(size - len(data))
+            try:
+                chunk = self._socket.recv(size - len(data))
+            except TimeoutError as exc:
+                raise RconError(f"RCON read timed out after {self.timeout} seconds") from exc
             if not chunk:
                 raise RconError("RCON connection closed unexpectedly")
             data.extend(chunk)
@@ -274,7 +277,7 @@ class WhitelistBot(commands.Bot):
                 self.settings.rcon_host,
                 self.settings.rcon_password,
                 port=self.settings.rcon_port,
-                timeout=10.0,
+                timeout=30.0,
             ) as rcon:
                 return rcon.command(command)
 
