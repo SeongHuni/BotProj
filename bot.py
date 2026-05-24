@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import re
+import socket
+import struct
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
@@ -12,7 +14,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
-from mcrcon import MCRcon
 
 from storage import VerificationStore
 
@@ -118,6 +119,91 @@ def parse_dm_username(content: str) -> str | None:
     return text
 
 
+class RconError(RuntimeError):
+    pass
+
+
+class RconClient:
+    def __init__(self, host: str, password: str, port: int, timeout: float = 10.0):
+        self.host = host
+        self.password = password
+        self.port = port
+        self.timeout = timeout
+        self._socket: socket.socket | None = None
+        self._next_request_id = 1
+
+    def __enter__(self) -> "RconClient":
+        self._socket = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        self._socket.settimeout(self.timeout)
+        self._authenticate()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self._socket is not None:
+            try:
+                self._socket.close()
+            finally:
+                self._socket = None
+
+    def _send_packet(self, request_id: int, packet_type: int, body: str) -> None:
+        if self._socket is None:
+            raise RconError("RCON socket is not connected")
+        payload = struct.pack("<ii", request_id, packet_type) + body.encode("utf-8") + b"\x00\x00"
+        self._socket.sendall(struct.pack("<i", len(payload)) + payload)
+
+    def _read_exact(self, size: int) -> bytes:
+        if self._socket is None:
+            raise RconError("RCON socket is not connected")
+        data = bytearray()
+        while len(data) < size:
+            chunk = self._socket.recv(size - len(data))
+            if not chunk:
+                raise RconError("RCON connection closed unexpectedly")
+            data.extend(chunk)
+        return bytes(data)
+
+    def _read_packet(self) -> tuple[int, int, str]:
+        raw_length = self._read_exact(4)
+        (length,) = struct.unpack("<i", raw_length)
+        payload = self._read_exact(length)
+        request_id, packet_type = struct.unpack("<ii", payload[:8])
+        body = payload[8:-2].decode("utf-8", errors="replace")
+        return request_id, packet_type, body
+
+    def _authenticate(self) -> None:
+        request_id = self._next_request_id
+        self._next_request_id += 1
+        self._send_packet(request_id, 3, self.password)
+
+        while True:
+            response_id, packet_type, _ = self._read_packet()
+            if packet_type == 2:
+                if response_id == -1:
+                    raise RconError("RCON authentication failed")
+                if response_id != request_id:
+                    raise RconError("RCON authentication returned an unexpected request id")
+                return
+
+    def command(self, command: str) -> str:
+        request_id = self._next_request_id
+        self._next_request_id += 1
+        self._send_packet(request_id, 2, command)
+
+        response_chunks: list[str] = []
+        while True:
+            response_id, packet_type, body = self._read_packet()
+            if response_id != request_id:
+                continue
+            if body:
+                response_chunks.append(body)
+            if packet_type != 0 or not body:
+                break
+        return "\n".join(response_chunks).strip()
+
+
 class WhitelistBot(commands.Bot):
     def __init__(self, settings: Settings, store: VerificationStore):
         intents = discord.Intents.default()
@@ -179,9 +265,16 @@ class WhitelistBot(commands.Bot):
             self.log.info("DM_VERIFY_REJECTED discord_id=%s minecraft=%s response=%s", message.author.id, username, response)
 
     async def run_rcon(self, command: str) -> str:
-        # mcrcon uses signal.SIGALRM internally, so it must run in the main thread.
-        with MCRcon(self.settings.rcon_host, self.settings.rcon_password, port=self.settings.rcon_port) as rcon:
-            return rcon.command(command)
+        def execute() -> str:
+            with RconClient(
+                self.settings.rcon_host,
+                self.settings.rcon_password,
+                port=self.settings.rcon_port,
+                timeout=10.0,
+            ) as rcon:
+                return rcon.command(command)
+
+        return await asyncio.to_thread(execute)
 
     async def add_to_whitelist(self, username: str) -> str:
         response = await self.run_rcon(f"whitelist add {username}")
