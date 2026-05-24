@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -180,11 +179,9 @@ class WhitelistBot(commands.Bot):
             self.log.info("DM_VERIFY_REJECTED discord_id=%s minecraft=%s response=%s", message.author.id, username, response)
 
     async def run_rcon(self, command: str) -> str:
-        def execute() -> str:
-            with MCRcon(self.settings.rcon_host, self.settings.rcon_password, port=self.settings.rcon_port) as rcon:
-                return rcon.command(command)
-
-        return await asyncio.to_thread(execute)
+        # mcrcon uses signal.SIGALRM internally, so it must run in the main thread.
+        with MCRcon(self.settings.rcon_host, self.settings.rcon_password, port=self.settings.rcon_port) as rcon:
+            return rcon.command(command)
 
     async def add_to_whitelist(self, username: str) -> str:
         response = await self.run_rcon(f"whitelist add {username}")
