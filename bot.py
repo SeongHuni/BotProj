@@ -135,8 +135,16 @@ class WhitelistBot(commands.Bot):
         guild = discord.Object(id=self.settings.discord_guild_id) if self.settings.discord_guild_id else None
         if guild:
             self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            self.log.info("Synced slash commands to guild_id=%s", self.settings.discord_guild_id)
+            try:
+                await self.tree.sync(guild=guild)
+                self.log.info("Synced slash commands to guild_id=%s", self.settings.discord_guild_id)
+            except discord.Forbidden:
+                self.log.warning(
+                    "Could not sync guild slash commands for guild_id=%s. "
+                    "Check DISCORD_GUILD_ID and invite the bot with the applications.commands scope. "
+                    "DM verification can still work if ALLOW_DM_VERIFY=true.",
+                    self.settings.discord_guild_id,
+                )
             if self.settings.allow_dm_verify:
                 await self.tree.sync()
                 self.log.info("Synced global slash commands for DM usage")
