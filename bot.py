@@ -37,6 +37,7 @@ class Settings:
     rcon_host: str
     rcon_port: int
     rcon_password: str
+    rcon_timeout_seconds: float
     minecraft_server_ip: str
     minecraft_server_port: int
     announce_in_minecraft: bool
@@ -54,6 +55,13 @@ def env_int(name: str) -> int | None:
     if not value:
         return None
     return int(value)
+
+
+def env_float(name: str) -> float | None:
+    value = os.getenv(name)
+    if not value:
+        return None
+    return float(value)
 
 
 def load_settings() -> Settings:
@@ -76,6 +84,7 @@ def load_settings() -> Settings:
         rcon_host=os.getenv("RCON_HOST", "127.0.0.1").strip(),
         rcon_port=int(os.getenv("RCON_PORT", "25575")),
         rcon_password=rcon_password,
+        rcon_timeout_seconds=env_float("RCON_TIMEOUT_SECONDS") or 60.0,
         minecraft_server_ip=os.getenv("MINECRAFT_SERVER_IP", "서버주소미설정").strip(),
         minecraft_server_port=int(os.getenv("MINECRAFT_SERVER_PORT", "25565")),
         announce_in_minecraft=env_bool("ANNOUNCE_IN_MINECRAFT", False),
@@ -277,7 +286,7 @@ class WhitelistBot(commands.Bot):
                 self.settings.rcon_host,
                 self.settings.rcon_password,
                 port=self.settings.rcon_port,
-                timeout=30.0,
+                timeout=self.settings.rcon_timeout_seconds,
             ) as rcon:
                 return rcon.command(command)
 

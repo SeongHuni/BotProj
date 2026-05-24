@@ -67,6 +67,12 @@ rcon.password=강력한_RCON_비밀번호
 
 RCON 포트 `25575`는 Google Cloud 방화벽에서 외부 공개하지 마세요. 봇을 같은 VM에서 실행하고 `RCON_HOST=127.0.0.1`로 쓰는 구성이 안전합니다.
 
+RCON 응답이 느린 서버라면 대기 시간을 늘릴 수 있습니다.
+
+```env
+RCON_TIMEOUT_SECONDS=60
+```
+
 ## Discord 권한
 
 OAuth2 Scope:
