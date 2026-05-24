@@ -32,6 +32,7 @@ class Settings:
     verify_channel_id: int | None
     allow_dm_verify: bool
     approval_channel_id: int | None
+    whitelist_log_channel_id: int | None
     verified_role_id: int | None
     require_admin_approval: bool
     rcon_host: str
@@ -40,7 +41,6 @@ class Settings:
     rcon_timeout_seconds: float
     minecraft_server_ip: str
     minecraft_server_port: int
-    announce_in_minecraft: bool
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -79,6 +79,7 @@ def load_settings() -> Settings:
         verify_channel_id=env_int("VERIFY_CHANNEL_ID"),
         allow_dm_verify=env_bool("ALLOW_DM_VERIFY", True),
         approval_channel_id=env_int("APPROVAL_CHANNEL_ID"),
+        whitelist_log_channel_id=env_int("WHITELIST_LOG_CHANNEL_ID") or 1508093161329660116,
         verified_role_id=env_int("VERIFIED_ROLE_ID"),
         require_admin_approval=env_bool("REQUIRE_ADMIN_APPROVAL", False),
         rcon_host=os.getenv("RCON_HOST", "127.0.0.1").strip(),
@@ -87,7 +88,6 @@ def load_settings() -> Settings:
         rcon_timeout_seconds=env_float("RCON_TIMEOUT_SECONDS") or 60.0,
         minecraft_server_ip=os.getenv("MINECRAFT_SERVER_IP", "서버주소미설정").strip(),
         minecraft_server_port=int(os.getenv("MINECRAFT_SERVER_PORT", "25565")),
-        announce_in_minecraft=env_bool("ANNOUNCE_IN_MINECRAFT", False),
     )
 
 
@@ -301,9 +301,26 @@ class WhitelistBot(commands.Bot):
 
     async def add_to_whitelist(self, username: str) -> str:
         response = await self.run_rcon(f"whitelist add {username}")
-        if self.settings.announce_in_minecraft:
-            await self.run_rcon(f"say {username} 님이 whitelist에 등록되었습니다.")
         return response
+
+    async def send_whitelist_log(self, content: str) -> None:
+        channel_id = self.settings.whitelist_log_channel_id
+        if not channel_id:
+            return
+        channel = self.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await self.fetch_channel(channel_id)
+            except discord.DiscordException:
+                self.log.warning("Whitelist log channel id=%s not found", channel_id)
+                return
+        if not hasattr(channel, "send"):
+            self.log.warning("Whitelist log channel id=%s is not messageable", channel_id)
+            return
+        try:
+            await channel.send(content)
+        except discord.DiscordException:
+            self.log.exception("Failed to send whitelist log channel_id=%s", channel_id)
 
     async def remove_from_whitelist(self, username: str) -> str:
         return await self.run_rcon(f"whitelist remove {username}")
@@ -383,6 +400,11 @@ async def complete_verification(
         username,
         approved_by.id if approved_by else "auto",
         rcon_response,
+    )
+    await bot.send_whitelist_log(
+        "[화이트리스트 추가] "
+        f"Minecraft: `{username}` / Discord: {discord_user.mention} (`{discord_user.id}`) / "
+        f"처리자: {approved_by.mention if approved_by else '자동'} / RCON: `{rcon_response}`"
     )
     return True, (
         f"등록 완료: Minecraft 닉네임 `{username}`가 whitelist에 추가되었습니다.\n"
@@ -560,6 +582,11 @@ async def whitelist_add(interaction: discord.Interaction, username: str) -> None
         bot.log.exception("Admin whitelist add failed minecraft=%s", username)
         await interaction.followup.send("Minecraft 서버와 연결할 수 없습니다.", ephemeral=True)
         return
+    await bot.send_whitelist_log(
+        "[화이트리스트 추가] "
+        f"Minecraft: `{username}` / 요청자: 관리자 직접 추가 / "
+        f"처리자: {interaction.user.mention} (`{interaction.user.id}`) / RCON: `{response}`"
+    )
     await interaction.followup.send(f"`{username}` 추가 완료\nRCON 응답: `{response}`", ephemeral=True)
 
 

@@ -10,7 +10,7 @@ Discord 사용자가 봇에게 1대1 DM으로 Minecraft 닉네임만 보내면 P
 - Discord 계정 1개당 Minecraft 닉네임 1개 제한
 - SQLite DB로 등록 기록 저장
 - RCON으로 `whitelist add/remove` 실행
-- 선택 기능: 운영진 승인 버튼, 인증 완료 역할 부여, Minecraft 서버 내 안내 메시지
+- 선택 기능: 운영진 승인 버튼, 인증 완료 역할 부여, 화이트리스트 로그 채널 알림
 - 관리자 명령: `/whitelist-add`, `/whitelist-remove`, `/whitelist-check`, `/whitelist-list`
 
 ## 빠른 설치
@@ -71,6 +71,12 @@ RCON 응답이 느린 서버라면 대기 시간을 늘릴 수 있습니다.
 
 ```env
 RCON_TIMEOUT_SECONDS=60
+```
+
+화이트리스트 추가 성공 로그를 Discord 채널에 남기려면:
+
+```env
+WHITELIST_LOG_CHANNEL_ID=1508093161329660116
 ```
 
 ## Discord 권한

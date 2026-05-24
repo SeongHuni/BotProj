@@ -1,3 +1,4 @@
+import asyncio
 import socket
 import struct
 import os
@@ -24,6 +25,16 @@ class BotSettingsTests(unittest.TestCase):
                 os.environ["RCON_TIMEOUT_SECONDS"] = previous_timeout
 
         self.assertEqual(settings.rcon_timeout_seconds, 75.5)
+
+    def test_load_settings_defaults_to_whitelist_log_channel(self):
+        previous_channel_id = os.environ.pop("WHITELIST_LOG_CHANNEL_ID", None)
+        try:
+            settings = bot.load_settings()
+        finally:
+            if previous_channel_id is not None:
+                os.environ["WHITELIST_LOG_CHANNEL_ID"] = previous_channel_id
+
+        self.assertEqual(settings.whitelist_log_channel_id, 1508093161329660116)
 
     def test_load_settings_defaults_to_longer_timeout(self):
         previous_timeout = os.environ.pop("RCON_TIMEOUT_SECONDS", None)
@@ -65,6 +76,46 @@ class BotSettingsTests(unittest.TestCase):
         result = client.command("whitelist add Steve")
 
         self.assertEqual(result, "whitelist updated")
+
+    def test_add_to_whitelist_only_sends_one_rcon_command(self):
+        commands = []
+
+        class FakeBot:
+            async def run_rcon(self, command):
+                commands.append(command)
+                return "ok"
+
+        result = asyncio.run(bot.WhitelistBot.add_to_whitelist(FakeBot(), "Steve"))
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(commands, ["whitelist add Steve"])
+
+    def test_send_whitelist_log_sends_to_configured_channel(self):
+        messages = []
+
+        class FakeChannel:
+            async def send(self, content):
+                messages.append(content)
+
+        class FakeBot:
+            def __init__(self):
+                self.settings = type("Settings", (), {"whitelist_log_channel_id": 12345})()
+                self.log = bot.logging.getLogger("test")
+
+            def get_channel(self, channel_id):
+                self.channel_id = channel_id
+                return FakeChannel()
+
+            async def fetch_channel(self, channel_id):
+                self.fetched_channel_id = channel_id
+                return FakeChannel()
+
+        fake_bot = FakeBot()
+
+        asyncio.run(bot.WhitelistBot.send_whitelist_log(fake_bot, "hello world"))
+
+        self.assertEqual(fake_bot.channel_id, 12345)
+        self.assertEqual(messages, ["hello world"])
 
 
 if __name__ == "__main__":
