@@ -148,7 +148,10 @@ class RconClient:
         except (OSError, TimeoutError) as exc:
             raise RconError(f"Unable to connect to RCON at {self.host}:{self.port}: {exc}") from exc
         self._socket.settimeout(self.timeout)
-        self._authenticate()
+        try:
+            self._authenticate()
+        except TimeoutError as exc:
+            raise RconError(f"RCON authentication timed out after {self.timeout} seconds") from exc
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -172,10 +175,7 @@ class RconClient:
             raise RconError("RCON socket is not connected")
         data = bytearray()
         while len(data) < size:
-            try:
-                chunk = self._socket.recv(size - len(data))
-            except TimeoutError as exc:
-                raise RconError(f"RCON read timed out after {self.timeout} seconds") from exc
+            chunk = self._socket.recv(size - len(data))
             if not chunk:
                 raise RconError("RCON connection closed unexpectedly")
             data.extend(chunk)
@@ -209,10 +209,17 @@ class RconClient:
         self._send_packet(request_id, 2, command)
 
         response_chunks: list[str] = []
+        saw_matching_packet = False
         while True:
-            response_id, packet_type, body = self._read_packet()
+            try:
+                response_id, packet_type, body = self._read_packet()
+            except TimeoutError:
+                if saw_matching_packet:
+                    break
+                raise RconError(f"RCON read timed out after {self.timeout} seconds")
             if response_id != request_id:
                 continue
+            saw_matching_packet = True
             if body:
                 response_chunks.append(body)
             if packet_type != 0 or not body:
