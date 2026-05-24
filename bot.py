@@ -134,7 +134,10 @@ class RconClient:
         self._next_request_id = 1
 
     def __enter__(self) -> "RconClient":
-        self._socket = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        try:
+            self._socket = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        except (OSError, TimeoutError) as exc:
+            raise RconError(f"Unable to connect to RCON at {self.host}:{self.port}: {exc}") from exc
         self._socket.settimeout(self.timeout)
         self._authenticate()
         return self
@@ -328,6 +331,9 @@ async def complete_verification(
 
     try:
         rcon_response = await bot.add_to_whitelist(username)
+    except RconError as exc:
+        bot.log.warning("RCON whitelist add failed discord_id=%s minecraft=%s: %s", discord_user.id, username, exc)
+        return False, "Minecraft 서버와 연결할 수 없습니다. 잠시 후 다시 시도하거나 운영진에게 문의하세요."
     except Exception:
         bot.log.exception("RCON whitelist add failed discord_id=%s minecraft=%s", discord_user.id, username)
         return False, "Minecraft 서버와 연결할 수 없습니다. 잠시 후 다시 시도하거나 운영진에게 문의하세요."
@@ -527,6 +533,10 @@ async def whitelist_add(interaction: discord.Interaction, username: str) -> None
     await interaction.response.defer(ephemeral=True)
     try:
         response = await bot.add_to_whitelist(username)
+    except RconError as exc:
+        bot.log.warning("Admin whitelist add failed minecraft=%s: %s", username, exc)
+        await interaction.followup.send("Minecraft 서버와 연결할 수 없습니다.", ephemeral=True)
+        return
     except Exception:
         bot.log.exception("Admin whitelist add failed minecraft=%s", username)
         await interaction.followup.send("Minecraft 서버와 연결할 수 없습니다.", ephemeral=True)
@@ -545,6 +555,10 @@ async def whitelist_remove(interaction: discord.Interaction, username: str) -> N
     await interaction.response.defer(ephemeral=True)
     try:
         response = await bot.remove_from_whitelist(username)
+    except RconError as exc:
+        bot.log.warning("Admin whitelist remove failed minecraft=%s: %s", username, exc)
+        await interaction.followup.send("Minecraft 서버와 연결할 수 없습니다.", ephemeral=True)
+        return
     except Exception:
         bot.log.exception("Admin whitelist remove failed minecraft=%s", username)
         await interaction.followup.send("Minecraft 서버와 연결할 수 없습니다.", ephemeral=True)
