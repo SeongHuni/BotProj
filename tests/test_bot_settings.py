@@ -117,6 +117,90 @@ class BotSettingsTests(unittest.TestCase):
         self.assertEqual(fake_bot.channel_id, 12345)
         self.assertEqual(messages, ["hello world"])
 
+    def test_whitelist_add_includes_server_address_in_confirmation(self):
+        sent_messages = []
+        logged_messages = []
+
+        class FakeResponse:
+            async def defer(self, ephemeral=False):
+                self.ephemeral = ephemeral
+
+        class FakeFollowup:
+            async def send(self, content, ephemeral=False):
+                sent_messages.append((content, ephemeral))
+
+        class FakeUser:
+            def __init__(self):
+                self.id = 42
+                self.mention = "<@42>"
+                self.guild_permissions = type("Permissions", (), {"manage_guild": True})()
+
+        class FakeBot:
+            def __init__(self):
+                self.settings = type(
+                    "Settings",
+                    (),
+                    {"minecraft_server_ip": "mc.example.com", "minecraft_server_port": 25565},
+                )()
+                self.log = bot.logging.getLogger("test")
+
+            async def add_to_whitelist(self, username):
+                self.username = username
+                return "whitelist updated"
+
+            async def send_whitelist_log(self, content):
+                logged_messages.append(content)
+
+        class FakeInteraction:
+            def __init__(self):
+                self.user = FakeUser()
+                self.response = FakeResponse()
+                self.followup = FakeFollowup()
+
+        original_bot = bot.bot
+        fake_bot = FakeBot()
+        bot.bot = fake_bot
+        try:
+            asyncio.run(bot.whitelist_add(FakeInteraction(), "Steve"))
+        finally:
+            bot.bot = original_bot
+
+        self.assertEqual(fake_bot.username, "Steve")
+        self.assertTrue(sent_messages)
+        self.assertIn("서버 주소: `mc.example.com:25565`", sent_messages[0][0])
+        self.assertTrue(sent_messages[0][1])
+        self.assertTrue(logged_messages)
+        self.assertIn("서버 주소: `mc.example.com:25565`", logged_messages[0])
+
+    def test_server_address_command_returns_configured_address(self):
+        sent_messages = []
+
+        class FakeResponse:
+            async def send_message(self, content, ephemeral=False):
+                sent_messages.append((content, ephemeral))
+
+        class FakeInteraction:
+            def __init__(self):
+                self.response = FakeResponse()
+
+        original_bot = bot.bot
+
+        class FakeBot:
+            def __init__(self):
+                self.settings = type(
+                    "Settings",
+                    (),
+                    {"minecraft_server_ip": "mc.example.com", "minecraft_server_port": 25565},
+                )()
+
+        bot.bot = FakeBot()
+        try:
+            asyncio.run(bot.server_address(FakeInteraction()))
+        finally:
+            bot.bot = original_bot
+
+        self.assertEqual(sent_messages, [("Minecraft 서버 주소: `mc.example.com:25565`", True)])
+
 
 if __name__ == "__main__":
     unittest.main()

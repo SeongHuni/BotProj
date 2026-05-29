@@ -91,6 +91,10 @@ def load_settings() -> Settings:
     )
 
 
+def format_minecraft_server_address(settings: Settings) -> str:
+    return f"{settings.minecraft_server_ip}:{settings.minecraft_server_port}"
+
+
 def setup_logging() -> None:
     LOG_DIR.mkdir(exist_ok=True)
     handler = RotatingFileHandler(
@@ -404,11 +408,12 @@ async def complete_verification(
     await bot.send_whitelist_log(
         "[화이트리스트 추가] "
         f"Minecraft: `{username}` / Discord: {discord_user.mention} (`{discord_user.id}`) / "
-        f"처리자: {approved_by.mention if approved_by else '자동'} / RCON: `{rcon_response}`"
+        f"처리자: {approved_by.mention if approved_by else '자동'} / RCON: `{rcon_response}` / "
+        f"서버 주소: `{format_minecraft_server_address(bot.settings)}`"
     )
     return True, (
         f"등록 완료: Minecraft 닉네임 `{username}`가 whitelist에 추가되었습니다.\n"
-        f"서버 주소: `{bot.settings.minecraft_server_ip}:{bot.settings.minecraft_server_port}`"
+        f"서버 주소: `{format_minecraft_server_address(bot.settings)}`"
     )
 
 
@@ -552,6 +557,14 @@ async def verify(interaction: discord.Interaction, username: str) -> None:
     await interaction.followup.send(message, ephemeral=ephemeral and not ok)
 
 
+@bot.tree.command(name="server-address", description="Minecraft 서버 주소를 확인합니다.")
+async def server_address(interaction: discord.Interaction) -> None:
+    await interaction.response.send_message(
+        f"Minecraft 서버 주소: `{format_minecraft_server_address(bot.settings)}`",
+        ephemeral=True,
+    )
+
+
 def admin_only() -> app_commands.check:
     async def predicate(interaction: discord.Interaction) -> bool:
         permissions = getattr(interaction.user, "guild_permissions", None)
@@ -585,9 +598,15 @@ async def whitelist_add(interaction: discord.Interaction, username: str) -> None
     await bot.send_whitelist_log(
         "[화이트리스트 추가] "
         f"Minecraft: `{username}` / 요청자: 관리자 직접 추가 / "
-        f"처리자: {interaction.user.mention} (`{interaction.user.id}`) / RCON: `{response}`"
+        f"처리자: {interaction.user.mention} (`{interaction.user.id}`) / RCON: `{response}` / "
+        f"서버 주소: `{format_minecraft_server_address(bot.settings)}`"
     )
-    await interaction.followup.send(f"`{username}` 추가 완료\nRCON 응답: `{response}`", ephemeral=True)
+    await interaction.followup.send(
+        f"`{username}` 추가 완료\n"
+        f"RCON 응답: `{response}`\n"
+        f"서버 주소: `{format_minecraft_server_address(bot.settings)}`",
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(name="whitelist-remove", description="관리자가 Minecraft 닉네임을 whitelist에서 제거합니다.")
