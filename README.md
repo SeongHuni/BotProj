@@ -7,11 +7,12 @@ Discord 사용자가 봇에게 1대1 DM으로 Minecraft 닉네임만 보내면 P
 - DM 인증: 사용자가 봇에게 `Steve` 또는 `/verify Steve` 전송
 - 서버 채널 인증: `/verify username`
 - Minecraft Java 닉네임 검증: `^[A-Za-z0-9_]{3,16}$`
-- Discord 계정 1개당 Minecraft 닉네임 1개 제한
+- Discord 계정 1개당 Minecraft 닉네임 2개 제한
 - SQLite DB로 등록 기록 저장
 - RCON으로 `whitelist add/remove` 실행
 - 선택 기능: 운영진 승인 버튼, 인증 완료 역할 부여, 화이트리스트 로그 채널 알림
 - 관리자 명령: `/whitelist-add`, `/whitelist-remove`, `/whitelist-check`, `/whitelist-list`
+- 서버 주소 조회: `/server-address`
 
 ## 빠른 설치
 

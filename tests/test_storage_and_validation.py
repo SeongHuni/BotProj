@@ -19,7 +19,7 @@ class StorageAndValidationTests(unittest.TestCase):
         for username in invalid:
             self.assertIsNone(USERNAME_RE.fullmatch(username))
 
-    def test_store_finds_duplicate_minecraft_name_case_insensitive(self):
+    def test_store_allows_two_names_per_discord_account(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = VerificationStore(Path(temp_dir) / "verified_users.db")
             store.add_verified_user(
@@ -30,9 +30,18 @@ class StorageAndValidationTests(unittest.TestCase):
                 approved_by=None,
                 rcon_response="ok",
             )
+            store.add_verified_user(
+                discord_id="1",
+                discord_name="UserA",
+                minecraft_name="Alex",
+                verified_at="2026-05-24T00:01:00Z",
+                approved_by=None,
+                rcon_response="ok",
+            )
 
-            self.assertEqual(store.get_by_discord_id("1")["minecraft_name"], "Steve")
-            self.assertEqual(store.get_by_minecraft_name("steve")["discord_id"], "1")
+            self.assertEqual(store.count_by_discord_id("1"), 2)
+            self.assertEqual([row["minecraft_name"] for row in store.list_by_discord_id("1")], ["Alex", "Steve"])
+            self.assertEqual(store.get_by_minecraft_name("steve")['discord_id'], "1")
 
 
 if __name__ == "__main__":

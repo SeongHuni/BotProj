@@ -201,6 +201,106 @@ class BotSettingsTests(unittest.TestCase):
 
         self.assertEqual(sent_messages, [("Minecraft 서버 주소: `mc.example.com:25565`", True)])
 
+    def test_submit_verification_allows_second_nickname(self):
+        messages = []
+
+        class FakeStore:
+            def list_by_discord_id(self, discord_id):
+                return [
+                    {"minecraft_name": "Steve"},
+                ]
+
+            def get_by_minecraft_name(self, minecraft_name):
+                return None
+
+            def get_by_discord_id(self, discord_id):
+                return {"minecraft_name": "Steve"}
+
+            def add_verified_user(self, **kwargs):
+                self.saved = kwargs
+
+        class FakeBot:
+            def __init__(self):
+                self.settings = type(
+                    "Settings",
+                    (),
+                    {
+                        "require_admin_approval": False,
+                        "discord_guild_id": None,
+                        "minecraft_server_ip": "mc.example.com",
+                        "minecraft_server_port": 25565,
+                    },
+                )()
+                self.store = FakeStore()
+                self.log = bot.logging.getLogger("test")
+
+            async def add_to_whitelist(self, username):
+                self.username = username
+                return "whitelist updated"
+
+            async def send_whitelist_log(self, content):
+                messages.append(content)
+
+            async def assign_verified_role(self, member):
+                self.assigned_member = member
+
+        class FakeUser:
+            def __init__(self):
+                self.id = 42
+                self.mention = "<@42>"
+                self.name = "DiscordUser"
+
+            def __str__(self):
+                return self.name
+
+        fake_bot = FakeBot()
+        ok, message = asyncio.run(
+            bot.submit_verification(fake_bot, discord_user=FakeUser(), username="Alex")
+        )
+
+        self.assertTrue(ok)
+        self.assertIn("등록 완료", message)
+        self.assertEqual(fake_bot.username, "Alex")
+        self.assertTrue(messages)
+
+    def test_submit_verification_rejects_third_nickname(self):
+        class FakeStore:
+            def list_by_discord_id(self, discord_id):
+                return [{"minecraft_name": "Steve"}, {"minecraft_name": "Alex"}]
+
+            def get_by_minecraft_name(self, minecraft_name):
+                return None
+
+        class FakeBot:
+            def __init__(self):
+                self.settings = type(
+                    "Settings",
+                    (),
+                    {
+                        "require_admin_approval": False,
+                        "discord_guild_id": None,
+                        "minecraft_server_ip": "mc.example.com",
+                        "minecraft_server_port": 25565,
+                    },
+                )()
+                self.store = FakeStore()
+                self.log = bot.logging.getLogger("test")
+
+        class FakeUser:
+            def __init__(self):
+                self.id = 42
+                self.name = "DiscordUser"
+
+            def __str__(self):
+                return self.name
+
+        ok, message = asyncio.run(
+            bot.submit_verification(FakeBot(), discord_user=FakeUser(), username="Herobrine")
+        )
+
+        self.assertFalse(ok)
+        self.assertIn("최대 2개", message)
+
 
 if __name__ == "__main__":
     unittest.main()

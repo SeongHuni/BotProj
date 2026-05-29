@@ -20,18 +20,7 @@ class VerificationStore:
     def _init_db(self) -> None:
         with closing(self._connect()) as conn:
             with conn:
-                conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS verified_users (
-                        discord_id TEXT PRIMARY KEY,
-                        discord_name TEXT NOT NULL,
-                        minecraft_name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                        verified_at TEXT NOT NULL,
-                        approved_by TEXT,
-                        rcon_response TEXT
-                    )
-                    """
-                )
+                self._ensure_verified_users_schema(conn)
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS pending_requests (
@@ -46,6 +35,55 @@ class VerificationStore:
                     )
                     """
                 )
+
+    def _ensure_verified_users_schema(self, conn: sqlite3.Connection) -> None:
+        columns = conn.execute("PRAGMA table_info(verified_users)").fetchall()
+        if not columns:
+            conn.execute(
+                """
+                CREATE TABLE verified_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    discord_id TEXT NOT NULL,
+                    discord_name TEXT NOT NULL,
+                    minecraft_name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                    verified_at TEXT NOT NULL,
+                    approved_by TEXT,
+                    rcon_response TEXT
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_verified_users_discord_id ON verified_users(discord_id)")
+            return
+
+        column_names = {column[1] for column in columns}
+        if "id" in column_names and any(column[1] == "discord_id" and column[5] == 0 for column in columns):
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_verified_users_discord_id ON verified_users(discord_id)")
+            return
+
+        conn.execute("ALTER TABLE verified_users RENAME TO verified_users_legacy")
+        conn.execute(
+            """
+            CREATE TABLE verified_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                discord_id TEXT NOT NULL,
+                discord_name TEXT NOT NULL,
+                minecraft_name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                verified_at TEXT NOT NULL,
+                approved_by TEXT,
+                rcon_response TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO verified_users (discord_id, discord_name, minecraft_name, verified_at, approved_by, rcon_response)
+            SELECT discord_id, discord_name, minecraft_name, verified_at, approved_by, rcon_response
+            FROM verified_users_legacy
+            ORDER BY verified_at
+            """
+        )
+        conn.execute("DROP TABLE verified_users_legacy")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_verified_users_discord_id ON verified_users(discord_id)")
 
     def add_verified_user(
         self,
@@ -70,8 +108,27 @@ class VerificationStore:
 
     def get_by_discord_id(self, discord_id: str) -> dict[str, Any] | None:
         with closing(self._connect()) as conn:
-            row = conn.execute("SELECT * FROM verified_users WHERE discord_id = ?", (discord_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM verified_users WHERE discord_id = ? ORDER BY verified_at DESC LIMIT 1",
+                (discord_id,),
+            ).fetchone()
         return dict(row) if row else None
+
+    def list_by_discord_id(self, discord_id: str) -> list[dict[str, Any]]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT * FROM verified_users WHERE discord_id = ? ORDER BY verified_at DESC",
+                (discord_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def count_by_discord_id(self, discord_id: str) -> int:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS count FROM verified_users WHERE discord_id = ?",
+                (discord_id,),
+            ).fetchone()
+        return int(row["count"]) if row else 0
 
     def get_by_minecraft_name(self, minecraft_name: str) -> dict[str, Any] | None:
         with closing(self._connect()) as conn:

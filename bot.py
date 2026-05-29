@@ -361,9 +361,9 @@ async def complete_verification(
     username: str,
     approved_by: discord.User | discord.Member | None = None,
 ) -> tuple[bool, str]:
-    existing_user = bot.store.get_by_discord_id(str(discord_user.id))
-    if existing_user:
-        return False, f"이미 Minecraft 닉네임 `{existing_user['minecraft_name']}`로 등록되어 있습니다."
+    existing_users = bot.store.list_by_discord_id(str(discord_user.id))
+    if len(existing_users) >= 2:
+        return False, "한 Discord 계정당 Minecraft 닉네임은 최대 2개까지 등록할 수 있습니다."
 
     existing_name = bot.store.get_by_minecraft_name(username)
     if existing_name:
@@ -428,9 +428,9 @@ async def submit_verification(
     if not is_valid_username(username):
         return False, "닉네임 형식이 올바르지 않습니다. Minecraft Java 닉네임은 3~16자의 영문, 숫자, 언더스코어만 사용할 수 있습니다."
 
-    existing_user = bot.store.get_by_discord_id(str(discord_user.id))
-    if existing_user:
-        return False, f"이미 Minecraft 닉네임 `{existing_user['minecraft_name']}`로 등록되어 있습니다. 변경이 필요하면 운영진에게 문의하세요."
+    existing_users = bot.store.list_by_discord_id(str(discord_user.id))
+    if len(existing_users) >= 2:
+        return False, "한 Discord 계정당 Minecraft 닉네임은 최대 2개까지 등록할 수 있습니다."
 
     existing_name = bot.store.get_by_minecraft_name(username)
     if existing_name:
